@@ -136,22 +136,3 @@ tail -f logs/latest/battery_test_log.csv
 ├── ai_prompts/
 └── TODO.md
 ```
-
-## Criar o repositório no GitHub
-
-Com GitHub CLI:
-
-```bash
-git init
-git add .
-git commit -m "feat: add Raspberry Pi 5 battery benchmark harness"
-gh repo create rpi5-powerbank-battery-bench --public --source=. --remote=origin --push
-```
-
-Sem GitHub CLI, crie um repositório vazio no GitHub e depois rode:
-
-```bash
-git remote add origin https://github.com/SEU_USUARIO/rpi5-powerbank-battery-bench.git
-git branch -M main
-git push -u origin main
-```

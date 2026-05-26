@@ -18,7 +18,7 @@ O projeto combina:
 | Sistema operacional | Raspberry Pi OS 64-bit Bookworm (versão mais recente) |
 | Armazenamento | Cartão SD ≥ 16 GB ou SSD via adaptador USB-C |
 | Power bank | Saída USB-C PD ≥ 27 W (5 V / 5 A) para alimentar o Raspberry Pi 5 adequadamente |
-| Acesso | Terminal local, SSH ou VNC; para o perfil `full` com GPU, é necessário ambiente gráfico |
+| Acesso | Terminal local, SSH ou VNC; para o perfil `full` com GPU, use KMS/DRM ou ambiente gráfico compatível |
 
 ## Por que fazer assim?
 
@@ -28,7 +28,7 @@ O Raspberry Pi 5 tem CPU Arm Cortex-A76 quad-core, GPU VideoCore VII, suporte a 
 
 Cada tipo de carga estresa um subsistema diferente do hardware. Entender a diferença ajuda a interpretar os resultados:
 
-### Carga de CPU (`stress-ng` + threads do `battery_logger`)
+### Carga de CPU (threads do `battery_logger`)
 
 O programa `battery_logger` é o responsável pela carga de CPU. Ele cria N threads (configurável por perfil) que calculam `sin(x) * sqrt(x)` em um loop contínuo. Essas operações usam a unidade de ponto flutuante (FPU) de cada núcleo A76 sem parar — o compilador não consegue eliminá-las por otimização porque o resultado acumula em uma variável `volatile`. O efeito é manter os núcleos em frequência máxima e consumo máximo de energia na CPU.
 
@@ -38,11 +38,11 @@ Uma thread aloca X MB de memória alinhados a página de 4 KB e percorre o buffe
 
 ### Carga de vídeo via `ffmpeg`
 
-O `ffmpeg` gera um vídeo colorido sintético (`testsrc2`, sem ler nenhum arquivo de disco) e o codifica em H.264 em software (`libx264`). Diferente das operações matemáticas simples do `stress-ng`, a codificação H.264 usa padrões de acesso de memória complexos — estimativa de movimento entre quadros, transformada DCT e codificação de entropia. A saída é descartada (`-f null -`): o objetivo é consumo de CPU em padrão de mídia real, não armazenar vídeo.
+O `ffmpeg` gera um vídeo colorido sintético (`testsrc2`, sem ler nenhum arquivo de disco) e o codifica em H.264 em software (`libx264`). Diferente da carga matemática direta das threads de CPU, a codificação H.264 usa padrões de acesso de memória complexos — estimativa de movimento entre quadros, transformada DCT e codificação de entropia. A saída é descartada (`-f null -`): o objetivo é consumo de CPU em padrão de mídia real, não armazenar vídeo.
 
 ### Carga gráfica via `glmark2`
 
-O `glmark2` renderiza cenas 3D (geometria, shaders, texturas) na GPU VideoCore VII. Diferente das outras cargas, ele **não estresa diretamente a CPU**: utiliza shaders de vértice e fragmento, amostrador de textura e a interface de memória dedicada à GPU. É o único perfil que mede o consumo do subsistema gráfico. O script prioriza a versão `glmark2-es2-drm`, que pode funcionar em modo headless (sem desktop), tornando o perfil `full` mais robusto.
+O `glmark2` renderiza cenas 3D (geometria, shaders, texturas) na GPU VideoCore VII. Diferente das outras cargas, ele **não estresa diretamente a CPU**: utiliza shaders de vértice e fragmento, amostrador de textura e a interface de memória dedicada à GPU. É o único perfil que mede o consumo do subsistema gráfico. O script procura, nesta ordem, `glmark2-es2-drm`, `glmark2-es2-wayland` e `glmark2`; a variante DRM é priorizada porque pode funcionar em modo headless. Se nenhuma variante compatível estiver disponível, o perfil `full` continua sem carga de GPU ativa e registra um aviso em `logs/latest/warnings.log`.
 
 ## Instalação
 
@@ -89,7 +89,7 @@ Para tentar usar CPU, memória, vídeo e GPU simultaneamente:
 ./scripts/run_battery_test.sh full
 ```
 
-O perfil `full` requer ambiente gráfico funcional (Wayland ou KMS/DRM) para o `glmark2`. Em ambientes headless via SSH sem servidor gráfico, a carga de GPU é ignorada automaticamente e um aviso é registrado em `logs/latest/warnings.log`.
+O perfil `full` tenta ativar GPU via `glmark2-es2-drm`, depois `glmark2-es2-wayland`, depois `glmark2`. Em um Raspberry Pi OS headless, a variante DRM é a mais provável de funcionar; se nenhuma variante estiver disponível ou executável, o teste segue com CPU, memória e vídeo, mas deixa um aviso claro em `logs/latest/warnings.log` e no `summary.txt` quando possível.
 
 ## Perfis disponíveis
 

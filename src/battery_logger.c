@@ -1,7 +1,9 @@
 #define _GNU_SOURCE
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
@@ -14,6 +16,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#define BYTES_PER_MB ((size_t)1024 * 1024)
+
 static atomic_int running = 1;
 
 typedef struct {
@@ -23,6 +27,64 @@ typedef struct {
 static void handle_signal(int sig) {
     (void)sig;
     atomic_store(&running, 0);
+}
+
+static int only_trailing_space(const char *text) {
+    while (*text) {
+        if (!isspace((unsigned char)*text)) {
+            return 0;
+        }
+        text++;
+    }
+    return 1;
+}
+
+static int parse_int_arg(const char *name, const char *text, int min_value, int max_value, int *out) {
+    char *end = NULL;
+
+    errno = 0;
+    long value = strtol(text, &end, 10);
+    if (errno == ERANGE || end == text || !only_trailing_space(end) ||
+        value < min_value || value > max_value) {
+        fprintf(stderr,
+                "Valor inválido para %s: '%s' (esperado inteiro entre %d e %d)\n",
+                name,
+                text,
+                min_value,
+                max_value);
+        return 0;
+    }
+
+    *out = (int)value;
+    return 1;
+}
+
+static int parse_size_arg(const char *name, const char *text, size_t max_value, size_t *out) {
+    char *end = NULL;
+
+    if (text[0] == '-') {
+        fprintf(stderr,
+                "Valor inválido para %s: '%s' (esperado inteiro entre 0 e %zu)\n",
+                name,
+                text,
+                max_value);
+        return 0;
+    }
+
+    errno = 0;
+    unsigned long long value = strtoull(text, &end, 10);
+    if (errno == ERANGE || end == text || !only_trailing_space(end) ||
+        value > (unsigned long long)max_value) {
+        fprintf(stderr,
+                "Valor inválido para %s: '%s' (esperado inteiro entre 0 e %zu)\n",
+                name,
+                text,
+                max_value);
+        return 0;
+    }
+
+    *out = (size_t)value;
+    return 1;
 }
 
 static double monotonic_seconds(void) {
@@ -78,9 +140,10 @@ static int read_throttled_status(unsigned long *value) {
     if (fgets(buffer, sizeof(buffer), fp)) {
         char *eq = strchr(buffer, '=');
         if (eq) {
+            char *end = NULL;
             errno = 0;
-            unsigned long parsed = strtoul(eq + 1, NULL, 0);
-            if (errno == 0) {
+            unsigned long parsed = strtoul(eq + 1, &end, 0);
+            if (errno == 0 && end != eq + 1 && only_trailing_space(end)) {
                 *value = parsed;
                 ok = 1;
             }
@@ -141,7 +204,7 @@ static void *cpu_worker(void *arg) {
 
 static void *memory_worker(void *arg) {
     memory_arg_t *mem_arg = (memory_arg_t *)arg;
-    size_t total_bytes = mem_arg->mem_mb * 1024ULL * 1024ULL;
+    size_t total_bytes = mem_arg->mem_mb * BYTES_PER_MB;
 
     if (total_bytes == 0) {
         return NULL;
@@ -175,7 +238,26 @@ static void *memory_worker(void *arg) {
     return NULL;
 }
 
-static void write_log_line(int fd, double start_monotonic) {
+static int sync_log_fd(int fd, const char *context) {
+    if (fsync(fd) != 0) {
+        fprintf(stderr, "Erro ao sincronizar %s: %s\n", context, strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+static int write_csv_header(int fd) {
+    if (dprintf(fd,
+                "epoch_s,datetime,elapsed_s,uptime_s,temp_c,load1,load5,load15,cpu_khz,throttled,mem_total_kb,mem_available_kb,swap_free_kb\n") < 0) {
+        fprintf(stderr, "Erro ao escrever cabeçalho do log: %s\n", strerror(errno));
+        return -1;
+    }
+
+    return sync_log_fd(fd, "cabeçalho do log");
+}
+
+static int write_log_line(int fd, double start_monotonic) {
     char datetime[64];
     char throttled_text[32] = "NA";
 
@@ -198,7 +280,7 @@ static void write_log_line(int fd, double start_monotonic) {
 
     iso_datetime_now(datetime, sizeof(datetime));
 
-    dprintf(
+    if (dprintf(
         fd,
         "%ld,%s,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f,%ld,%s,%ld,%ld,%ld\n",
         (long)epoch,
@@ -214,9 +296,12 @@ static void write_log_line(int fd, double start_monotonic) {
         mem_total_kb,
         mem_available_kb,
         swap_free_kb
-    );
+    ) < 0) {
+        fprintf(stderr, "Erro ao escrever linha de log: %s\n", strerror(errno));
+        return -1;
+    }
 
-    fsync(fd);
+    return sync_log_fd(fd, "linha de log");
 }
 
 static void usage(const char *prog) {
@@ -238,12 +323,16 @@ int main(int argc, char *argv[]) {
     }
 
     const char *log_path = argv[1];
-    int interval_seconds = atoi(argv[2]);
-    int cpu_threads = atoi(argv[3]);
-    size_t mem_mb = (size_t)strtoull(argv[4], NULL, 10);
+    int interval_seconds = 0;
+    int cpu_threads = 0;
+    size_t mem_mb = 0;
 
-    if (interval_seconds <= 0) interval_seconds = 30;
-    if (cpu_threads < 0) cpu_threads = 0;
+    if (!parse_int_arg("intervalo_s", argv[2], 1, INT_MAX, &interval_seconds) ||
+        !parse_int_arg("cpu_threads", argv[3], 0, INT_MAX, &cpu_threads) ||
+        !parse_size_arg("mem_mb", argv[4], SIZE_MAX / BYTES_PER_MB, &mem_mb)) {
+        usage(argv[0]);
+        return 2;
+    }
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
@@ -255,12 +344,18 @@ int main(int argc, char *argv[]) {
     }
 
     struct stat st;
-    if (fstat(fd, &st) == 0 && st.st_size == 0) {
-        dprintf(fd,
-                "epoch_s,datetime,elapsed_s,uptime_s,temp_c,load1,load5,load15,cpu_khz,throttled,mem_total_kb,mem_available_kb,swap_free_kb\n");
-        fsync(fd);
+    if (fstat(fd, &st) != 0) {
+        perror("Erro ao consultar arquivo de log");
+        close(fd);
+        return 1;
     }
 
+    if (st.st_size == 0 && write_csv_header(fd) != 0) {
+        close(fd);
+        return 1;
+    }
+
+    int exit_code = 0;
     pthread_t *cpu = NULL;
     if (cpu_threads > 0) {
         cpu = calloc((size_t)cpu_threads, sizeof(pthread_t));
@@ -276,6 +371,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Erro ao criar thread CPU %d: %s\n", i, strerror(rc));
                 atomic_store(&running, 0);
                 cpu_threads = i;
+                exit_code = 1;
                 break;
             }
         }
@@ -300,7 +396,11 @@ int main(int argc, char *argv[]) {
     double start_monotonic = monotonic_seconds();
 
     while (atomic_load(&running)) {
-        write_log_line(fd, start_monotonic);
+        if (write_log_line(fd, start_monotonic) != 0) {
+            atomic_store(&running, 0);
+            exit_code = 1;
+            break;
+        }
         sleep((unsigned int)interval_seconds);
     }
 
@@ -315,9 +415,15 @@ int main(int argc, char *argv[]) {
         pthread_join(mem_thread, NULL);
     }
 
-    write_log_line(fd, start_monotonic);
-    close(fd);
+    if (exit_code == 0 && write_log_line(fd, start_monotonic) != 0) {
+        exit_code = 1;
+    }
+
+    if (close(fd) != 0) {
+        perror("Erro ao fechar arquivo de log");
+        exit_code = 1;
+    }
 
     printf("battery_logger encerrado\n");
-    return 0;
+    return exit_code;
 }

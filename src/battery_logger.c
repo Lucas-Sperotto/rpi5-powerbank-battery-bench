@@ -186,6 +186,9 @@ static void read_meminfo(long *mem_total_kb, long *mem_available_kb, long *swap_
     fclose(f);
 }
 
+/* Cada thread executa sin(x)*sqrt(x) em loop para manter a FPU ocupada.
+ * O uso de volatile e de operações transcendentais impede que o compilador
+ * elimine o laço por otimização. */
 static void *cpu_worker(void *arg) {
     unsigned long id = (unsigned long)(uintptr_t)arg;
     volatile double x = 0.123456789 + (double)id;
@@ -221,6 +224,9 @@ static void *memory_worker(void *arg) {
 
     volatile unsigned long long checksum = 0;
 
+    /* Percorre o buffer de 64 em 64 bytes (tamanho de uma linha de cache) para
+     * forçar acessos à DRAM que não cabem no cache L3, mantendo pressão sobre
+     * a largura de banda da memória RAM. */
     while (atomic_load(&running)) {
         for (size_t i = 0; i < total_bytes; i += 64) {
             unsigned char value = (unsigned char)(buffer[i] + 1u + (unsigned char)(i & 0xFFu));
@@ -238,6 +244,9 @@ static void *memory_worker(void *arg) {
     return NULL;
 }
 
+/* fsync garante que cada linha chegue ao meio físico antes de continuar.
+ * Em testes de bateria, o desligamento abrupto é esperado; sem fsync,
+ * as últimas linhas de log podem ser perdidas. */
 static int sync_log_fd(int fd, const char *context) {
     if (fsync(fd) != 0) {
         fprintf(stderr, "Erro ao sincronizar %s: %s\n", context, strerror(errno));

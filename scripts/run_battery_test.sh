@@ -132,6 +132,11 @@ start_ffmpeg_video() {
     return 0
   fi
 
+  # testsrc2: gerador de vídeo sintético colorido (sem leitura de disco).
+  # libx264 -preset veryfast: codificação H.264 em software — estresa CPU de
+  #   forma diferente de stress-ng (estimativa de movimento, DCT, entropia).
+  # -f null -: descarta o vídeo gerado; o objetivo é carga de CPU, não armazenar.
+  # O while loop reinicia o ffmpeg ao fim de cada chunk para manter a carga contínua.
   (
     while [[ -f "$RUNNING_FILE" ]]; do
       ffmpeg -nostdin -hide_banner -loglevel warning \
@@ -152,6 +157,11 @@ start_gpu_workload() {
     return 0
   fi
 
+  # O glmark2 tem três variantes no Raspberry Pi OS:
+  #   glmark2-es2-drm   : usa KMS/DRM diretamente — funciona headless via SSH.
+  #   glmark2-es2-wayland: requer servidor Wayland (desktop Raspberry Pi OS).
+  #   glmark2           : variante genérica / fallback.
+  # Priorizamos drm para que o perfil full funcione mesmo sem ambiente gráfico.
   local glmark_bin="${GLMARK_BIN:-}"
   if [[ -z "$glmark_bin" ]]; then
     for candidate in glmark2-es2-drm glmark2-es2-wayland glmark2; do

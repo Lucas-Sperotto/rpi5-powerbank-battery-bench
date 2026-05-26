@@ -1,0 +1,13 @@
+[Unit]
+Description=Raspberry Pi 5 Power Bank Battery Benchmark
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/rpi5-powerbank-battery-bench
+ExecStart=/home/pi/rpi5-powerbank-battery-bench/scripts/run_battery_test.sh video
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

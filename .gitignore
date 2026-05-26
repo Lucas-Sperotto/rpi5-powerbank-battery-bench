@@ -1,0 +1,6 @@
+build/
+logs/*
+!logs/.gitkeep
+*.o
+*.out
+battery-bench.service

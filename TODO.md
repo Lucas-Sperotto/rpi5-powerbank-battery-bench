@@ -17,3 +17,13 @@
 - Gerar gráficos de temperatura, frequência, memória disponível e duração.
 - Adicionar perfis específicos: `camera`, `server`, `desktop`, `headless`.
 - Criar GitHub Actions apenas para compilar o código C em Linux.
+
+## Próximos passos
+
+- [ ] Adicionar suporte a diferentes modelos de Raspberry Pi.
+- [ ] Adicionar detecção automática da memória disponível.
+- [ ] Gerar gráficos de temperatura, carga e frequência da CPU.
+- [ ] Criar relatório automático em Markdown após cada teste.
+- [ ] Adicionar exemplos de resultados com diferentes power banks.
+- [ ] Criar workflow de validação dos scripts.
+- [ ] Documentar riscos de corrupção do cartão SD em desligamentos abruptos.

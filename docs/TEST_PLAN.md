@@ -7,9 +7,9 @@ Medir a autonomia de uma power bank alimentando um Raspberry Pi 5 sob cargas con
 ## Perfis
 
 - `quick`: carga leve para verificar se tudo funciona.
-- `balanced`: Carga controlada de CPU e memória com `stress-ng`.
-- `video`: Carga de CPU e memória com `stress-ng` + codificação de vídeo com `ffmpeg`.
-- `full`: Carga de CPU, memória, `ffmpeg` + carga gráfica com `glmark2`. **Requer ambiente de desktop.**
+- `balanced`: Carga controlada de CPU e memória (via `battery_logger`).
+- `video`: Carga de CPU e memória + codificação de vídeo com `ffmpeg`.
+- `full`: Carga de CPU, memória, `ffmpeg` + carga gráfica com `glmark2`.
 
 ## Procedimento recomendado
 

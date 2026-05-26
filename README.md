@@ -30,9 +30,9 @@ Cada tipo de carga estresa um subsistema diferente do hardware. Entender a difer
 
 ### Carga de CPU (`stress-ng` + threads do `battery_logger`)
 
-O `battery_logger` cria N threads que calculam `sin(x) * sqrt(x)` em loop contínuo. Essas operações usam a unidade de ponto flutuante (FPU) de cada núcleo A76 sem parar — o compilador não consegue eliminá-las por otimização porque o resultado acumula em uma variável `volatile`. O efeito é manter os núcleos em frequência máxima e consumo máximo de energia na CPU.
+O programa `battery_logger` é o responsável pela carga de CPU. Ele cria N threads (configurável por perfil) que calculam `sin(x) * sqrt(x)` em um loop contínuo. Essas operações usam a unidade de ponto flutuante (FPU) de cada núcleo A76 sem parar — o compilador não consegue eliminá-las por otimização porque o resultado acumula em uma variável `volatile`. O efeito é manter os núcleos em frequência máxima e consumo máximo de energia na CPU.
 
-### Carga de memória (thread interna do `battery_logger`)
+### Carga de memória (interna do `battery_logger`)
 
 Uma thread aloca X MB de memória alinhados a página de 4 KB e percorre o buffer de 64 em 64 bytes (tamanho exato de uma linha de cache). Isso força leituras e escritas na DRAM que não cabem no cache L3 (4 MB no A76), medindo a largura de banda real da memória RAM e o consumo associado.
 
@@ -42,7 +42,7 @@ O `ffmpeg` gera um vídeo colorido sintético (`testsrc2`, sem ler nenhum arquiv
 
 ### Carga gráfica via `glmark2`
 
-O `glmark2` renderiza cenas 3D (geometria, shaders, texturas) na GPU VideoCore VII. Diferente das outras cargas, ele **não estresa diretamente a CPU**: utiliza shaders de vértice e fragmento, amostrador de textura e a interface de memória dedicada à GPU. É o único perfil que mede o consumo do subsistema gráfico separadamente da CPU. Requer ambiente gráfico (Wayland ou KMS/DRM).
+O `glmark2` renderiza cenas 3D (geometria, shaders, texturas) na GPU VideoCore VII. Diferente das outras cargas, ele **não estresa diretamente a CPU**: utiliza shaders de vértice e fragmento, amostrador de textura e a interface de memória dedicada à GPU. É o único perfil que mede o consumo do subsistema gráfico. O script prioriza a versão `glmark2-es2-drm`, que pode funcionar em modo headless (sem desktop), tornando o perfil `full` mais robusto.
 
 ## Instalação
 

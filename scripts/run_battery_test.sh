@@ -47,7 +47,10 @@ RUNNING_FILE="$RUN_DIR/RUNNING"
 VIDEO_SIZE="${VIDEO_SIZE:-1920x1080}"
 VIDEO_RATE="${VIDEO_RATE:-30}"
 VIDEO_SECONDS_PER_CHUNK="${VIDEO_SECONDS_PER_CHUNK:-300}"
-FFMPEG_PRESET="${FFMPEG_PRESET:-veryfast}"
+# O preset `medium` oferece um bom equilíbrio entre qualidade e uso de CPU.
+# `veryfast` (padrão anterior) é muito leve e pode não estressar a CPU o suficiente.
+# Presets mais lentos (`slow`, `slower`) aumentam o consumo de energia.
+FFMPEG_PRESET="${FFMPEG_PRESET:-medium}"
 
 pids=()
 cleanup_started=0
@@ -91,6 +94,22 @@ trap cleanup EXIT
 trap 'cleanup 130' INT
 trap 'cleanup 143' TERM
 
+check_dependencies() {
+  local missing=0
+  # Dependências essenciais para compilar, logar e sumarizar.
+  # ffmpeg e glmark2 são verificados depois, pois são opcionais dependendo do perfil.
+  local deps=("make" "gcc" "python3" "vcgencmd")
+
+  echo "Verificando dependências essenciais..."
+  for cmd in "${deps[@]}"; do
+    if ! command -v "$cmd" &>/dev/null; then
+      echo "ERRO: Dependência não encontrada: $cmd" >&2
+      missing=1
+    fi
+  done
+  [[ "$missing" -eq 1 ]] && { echo "Instale as dependências com './scripts/install_deps.sh' e tente novamente." >&2; exit 1; }
+}
+
 mkdir -p "$RUN_DIR"
 ln -sfn "$RUN_DIR" "$LOG_ROOT/latest"
 touch "$RUNNING_FILE"
@@ -109,6 +128,7 @@ FFMPEG_PRESET=$FFMPEG_PRESET
 START_DATETIME=$(date --iso-8601=seconds)
 CFG
 
+check_dependencies
 make all
 
 start_logger() {
